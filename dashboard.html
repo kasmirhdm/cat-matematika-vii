@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard Guru - CAT Matematika VII</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#eef2f7;color:#182338}header{background:#173b72;color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}header h1{margin:0;font-size:20px}.wrap{max-width:1250px;margin:20px auto;padding:0 12px}.card{background:#fff;border-radius:14px;padding:20px;box-shadow:0 4px 18px #0001;margin-bottom:18px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}button,input{font-size:15px}button{padding:11px 16px;border:0;border-radius:8px;background:#173b72;color:#fff;cursor:pointer}button.secondary{background:#e7edf6;color:#173b72}input{padding:11px;border:1px solid #ccd4df;border-radius:8px}.api{flex:1;min-width:350px}.search{min-width:260px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:#f1f5fa;padding:16px;border-radius:10px}.stat b{display:block;font-size:27px;color:#173b72;margin-bottom:5px}.small{font-size:13px;color:#687386}.status{margin-top:10px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:15px;min-width:950px}th,td{padding:10px;border-bottom:1px solid #e1e6ee;text-align:left;font-size:14px;vertical-align:top}th{background:#f1f5fa;position:sticky;top:0}.score{font-weight:700}.ok{color:#1f7a45}.bad{color:#b42318}.answers{max-width:260px;word-break:break-all}.empty{text-align:center;padding:30px;color:#687386}@media(max-width:750px){.stats{grid-template-columns:repeat(2,1fr)}.api,.search{min-width:100%}header h1{font-size:16px}}
+</style>
+</head>
+<body>
+<header><h1>Dashboard Guru — CAT Matematika Kelas VII</h1><div id="lastUpdate">Belum dimuat</div></header>
+<div class="wrap">
+<div class="card">
+<h2 style="margin-top:0">Hasil Peserta</h2>
+<div class="toolbar"><input id="api" class="api" value="https://script.google.com/macros/s/AKfycbx2ZZ6ymgXAtRWlRuS36VqOq8fnlLiDMN0vACupA1n7r65PevVq3aKhR-buv5x6FZYTLQ/exec"><button onclick="loadResults()">🔄 Muat Data</button><button class="secondary" onclick="downloadCSV()">⬇ Download CSV</button></div>
+<div class="toolbar" style="margin-top:10px"><input id="search" class="search" placeholder="Cari nama siswa..." oninput="render()"><button class="secondary" onclick="document.getElementById('search').value='';render()">Reset</button></div>
+<p id="status" class="small status">Silakan klik <b>Muat Data</b>.</p>
+</div>
+<div class="card"><div class="stats"><div class="stat"><b id="total">0</b>Peserta</div><div class="stat"><b id="avg">0</b>Rata-rata nilai</div><div class="stat"><b id="high">0</b>Nilai tertinggi</div><div class="stat"><b id="low">0</b>Nilai terendah</div></div></div>
+<div class="card"><h2 style="margin-top:0">Daftar Nilai</h2><div class="table-wrap"><table><thead><tr><th>No</th><th>Nama</th><th>Nilai</th><th>Benar</th><th>Salah</th><th>Mulai</th><th>Selesai</th><th>Durasi</th><th>Jawaban</th></tr></thead><tbody id="body"></tbody></table></div></div>
+</div>
+<script>
+let rows=[];
+async function loadResults(){const url=document.getElementById('api').value.trim();if(!url){alert('Masukkan URL Web App Google Apps Script.');return}document.getElementById('status').textContent='Sedang mengambil data...';try{const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);rows=await r.json();render();document.getElementById('lastUpdate').textContent='Update: '+new Date().toLocaleTimeString('id-ID');document.getElementById('status').textContent='Data berhasil dimuat: '+rows.length+' peserta.'}catch(e){document.getElementById('status').textContent='Gagal mengambil data. Periksa URL Web App dan aksesnya.';alert('Gagal mengambil data. Pastikan Web App Apps Script disetel dapat diakses oleh siapa saja.')}}
+function render(){const q=document.getElementById('search').value.trim().toLowerCase();const filtered=rows.filter(x=>String(x.name||'').toLowerCase().includes(q));const b=document.getElementById('body');b.innerHTML='';if(!filtered.length){b.innerHTML='<tr><td colspan="9" class="empty">Belum ada data yang cocok.</td></tr>'}else filtered.forEach((x,i)=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+(i+1)+'</td><td>'+esc(x.name)+'</td><td class="score">'+(Number(x.score)||0)+'</td><td class="ok">'+(Number(x.correct)||0)+'</td><td class="bad">'+(Number(x.wrong)||0)+'</td><td>'+fmt(x.startedAt)+'</td><td>'+fmt(x.finishedAt)+'</td><td>'+dur(x.durationSeconds)+'</td><td class="answers">'+esc(JSON.stringify(x.answers||[]))+'</td>';b.appendChild(tr)});const scores=rows.map(x=>Number(x.score)||0);document.getElementById('total').textContent=rows.length;document.getElementById('avg').textContent=rows.length?(scores.reduce((a,b)=>a+b,0)/rows.length).toFixed(1):0;document.getElementById('high').textContent=rows.length?Math.max(...scores):0;document.getElementById('low').textContent=rows.length?Math.min(...scores):0}
+function fmt(v){if(!v)return '-';const d=new Date(v);return isNaN(d)?String(v):d.toLocaleString('id-ID')}
+function dur(v){const n=Number(v)||0;return Math.floor(n/60)+' m '+(n%60)+' dtk'}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function downloadCSV(){if(!rows.length){alert('Muat data dahulu.');return}const head=['Nama','Nilai','Benar','Salah','Mulai','Selesai','Durasi(detik)','Jawaban'];const lines=[head,...rows.map(x=>[x.name,x.score,x.correct,x.wrong,x.startedAt,x.finishedAt,x.durationSeconds,JSON.stringify(x.answers||[])])].map(a=>a.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(','));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='hasil_CAT_Matematika_VII.csv';a.click();URL.revokeObjectURL(a.href)}
+loadResults();
+</script>
+</body></html>
