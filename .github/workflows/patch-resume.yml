@@ -26,6 +26,12 @@ jobs:
           path = Path('siswa.html')
           s = path.read_text(encoding='utf-8')
 
+          # Update the Apps Script Web App endpoint.
+          old_api = 'https://script.google.com/macros/s/AKfycbx2ZZ6ymgXAtRWlRuS36VqOq8fnlLiDMN0vACupA1n7r65PevVq3aKhR-buv5x6FZYTLQ/exec'
+          new_api = 'https://script.google.com/macros/s/AKfycbyP5h11L7DgVjwEUn7rKqUnzfhhXeFtvrtt3JIqRwDC5qWfJ1PDrpeJ7nDlEf36P35ABQ/exec'
+          if old_api in s:
+              s = s.replace(old_api, new_api, 1)
+
           # The start-page UI may already be patched. Ensure it is present.
           old_ui = '<input id="studentName" placeholder="Masukkan nama lengkap siswa"><button class="startbtn" onclick="startTest()">▶ &nbsp; Mulai Ujian</button>'
           new_ui = '''<div style="text-align:left;max-width:560px;margin:0 auto">
