@@ -2,6 +2,10 @@ name: Update student exam flow
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/patch-resume.yml'
+      - 'siswa.html'
 
 permissions:
   contents: write
@@ -17,7 +21,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('siswa.html')
           s = path.read_text(encoding='utf-8')
@@ -31,11 +34,10 @@ jobs:
           <div id="resumeNotice" class="notice hidden" style="margin-bottom:10px"></div>
           <button id="startButton" class="startbtn" onclick="startTest()" disabled>▶ &nbsp; Mulai Ujian</button>
           </div>'''
-          if old_ui not in s:
-              raise SystemExit('UI target not found')
-          s = s.replace(old_ui, new_ui, 1)
+          if old_ui in s:
+              s = s.replace(old_ui, new_ui, 1)
 
-          marker = 'let answers=Array(questions.length).fill(null),current=0,time=2700,timer=null,student=\'\',startedAt=null;'
+          marker = "let answers=Array(questions.length).fill(null),current=0,time=2700,timer=null,student='',startedAt=null;"
           pos = s.find(marker)
           if pos < 0:
               raise SystemExit('JS marker not found')
@@ -44,127 +46,44 @@ jobs:
           const EXAM_SECONDS=2700;
           const STORAGE_PREFIX='uts_matematika_vii_2026_';
           function storageKey(){return STORAGE_PREFIX+participantCode}
-          function saveProgress(){
-            if(!participantCode||!startedAt)return;
-            try{
-              localStorage.setItem(storageKey(),JSON.stringify({answers:answers,current:current,startedAt:startedAt,student:student,lastSavedAt:new Date().toISOString()}));
-            }catch(e){console.log(e)}
-          }
+          function saveProgress(){if(!participantCode||!startedAt)return;try{localStorage.setItem(storageKey(),JSON.stringify({answers:answers,current:current,startedAt:startedAt,student:student,lastSavedAt:new Date().toISOString()}))}catch(e){console.log(e)}}
           function clearProgress(){try{if(participantCode)localStorage.removeItem(storageKey())}catch(e){}}
-          function updateTimer(){
-            const safe=Math.max(0,time);
-            document.getElementById('timer').textContent=String(Math.floor(safe/60)).padStart(2,'0')+':'+String(safe%60).padStart(2,'0');
-          }
-          function getSavedProgress(){
-            try{
-              const raw=localStorage.getItem(storageKey());
-              if(!raw)return null;
-              const p=JSON.parse(raw);
-              if(!p.startedAt||!Array.isArray(p.answers)||p.answers.length!==questions.length)return null;
-              return p;
-            }catch(e){return null}
-          }
+          function updateTimer(){const safe=Math.max(0,time);document.getElementById('timer').textContent=String(Math.floor(safe/60)).padStart(2,'0')+':'+String(safe%60).padStart(2,'0')}
+          function getSavedProgress(){try{const raw=localStorage.getItem(storageKey());if(!raw)return null;const p=JSON.parse(raw);if(!p.startedAt||!Array.isArray(p.answers)||p.answers.length!==questions.length)return null;return p}catch(e){return null}}
           function verifyCode(){
-            const input=document.getElementById('participantCode');
-            const status=document.getElementById('participantStatus');
-            const resume=document.getElementById('resumeNotice');
-            const btn=document.getElementById('startButton');
-            const code=(input.value||'').trim().toUpperCase();
-            status.classList.remove('hidden');
-            resume.classList.add('hidden');
-            btn.disabled=true;
-            participantCode='';student='';
+            const input=document.getElementById('participantCode'),status=document.getElementById('participantStatus'),resume=document.getElementById('resumeNotice'),btn=document.getElementById('startButton');
+            const code=(input.value||'').trim().toUpperCase();status.classList.remove('hidden');resume.classList.add('hidden');btn.disabled=true;participantCode='';student='';
             if(!code){status.textContent='Silakan masukkan kode peserta.';return}
             status.textContent='⏳ Memeriksa kode peserta...';
-            fetch(API_URL+'?action=lookup&code='+encodeURIComponent(code),{cache:'no-store'})
-              .then(r=>r.json())
-              .then(data=>{
-                if(!data.ok){status.textContent='❌ Kode peserta tidak ditemukan. Periksa kembali kode Anda.';return}
-                participantCode=data.code;
-                student=data.name;
-                status.innerHTML='✅ Peserta terverifikasi: <b>'+escapeHtml(student)+'</b>';
-                btn.disabled=false;
-                const saved=getSavedProgress();
-                if(saved){
-                  const elapsed=Math.floor((Date.now()-new Date(saved.startedAt).getTime())/1000);
-                  const remaining=EXAM_SECONDS-elapsed;
-                  if(remaining>0){
-                    resumeMode=true;
-                    resume.classList.remove('hidden');
-                    resume.innerHTML='🔄 <b>Ujian sebelumnya ditemukan.</b><br>Nama: '+escapeHtml(student)+'<br>Jawaban dan waktu akan dilanjutkan dari posisi terakhir.';
-                    btn.textContent='▶  Lanjutkan Ujian';
-                  }else{
-                    localStorage.removeItem(storageKey());
-                    resumeMode=false;
-                    resume.classList.add('hidden');
-                    btn.textContent='▶  Mulai Ujian Baru';
-                  }
-                }else{
-                  resumeMode=false;
-                  btn.textContent='▶  Mulai Ujian';
-                }
-              })
-              .catch(e=>{
-                console.log(e);
-                status.textContent='⚠️ Tidak dapat memeriksa kode. Pastikan internet aktif lalu coba lagi.';
-              });
+            fetch(API_URL+'?action=lookup&code='+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).then(data=>{
+              if(!data.ok){status.textContent='❌ Kode peserta tidak ditemukan. Periksa kembali kode Anda.';return}
+              participantCode=data.code;student=data.name;status.innerHTML='✅ Peserta terverifikasi: <b>'+escapeHtml(student)+'</b>';btn.disabled=false;
+              const saved=getSavedProgress();
+              if(saved){const elapsed=Math.floor((Date.now()-new Date(saved.startedAt).getTime())/1000),remaining=EXAM_SECONDS-elapsed;if(remaining>0){resumeMode=true;resume.classList.remove('hidden');resume.innerHTML='🔄 <b>Ujian sebelumnya ditemukan.</b><br>Nama: '+escapeHtml(student)+'<br>Jawaban dan waktu akan dilanjutkan dari posisi terakhir.';btn.textContent='▶  Lanjutkan Ujian'}else{localStorage.removeItem(storageKey());resumeMode=false;btn.textContent='▶  Mulai Ujian Baru'}}else{resumeMode=false;btn.textContent='▶  Mulai Ujian'}
+            }).catch(e=>{console.log(e);status.textContent='⚠️ Tidak dapat memeriksa kode. Pastikan internet aktif lalu coba lagi.'})
           }
           function escapeHtml(v){return String(v).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]})}
           function startTest(){
             if(!participantCode||!student){alert('Silakan verifikasi kode peserta terlebih dahulu.');return}
             const saved=getSavedProgress();
-            if(resumeMode&&saved){
-              answers=saved.answers.slice();
-              current=Math.min(Math.max(Number(saved.current)||0,0),questions.length-1);
-              startedAt=saved.startedAt;
-              const elapsed=Math.floor((Date.now()-new Date(startedAt).getTime())/1000);
-              time=Math.max(0,EXAM_SECONDS-elapsed);
-              if(time<=0){clearProgress();resumeMode=false;alert('Waktu ujian sebelumnya sudah habis. Silakan mulai ujian baru.');return}
-            }else{
-              answers=Array(questions.length).fill(null);
-              current=0;
-              time=EXAM_SECONDS;
-              startedAt=new Date().toISOString();
-              saveProgress();
-            }
-            document.getElementById('start').classList.add('hidden');
-            document.getElementById('exam').classList.remove('hidden');
-            updateTimer();
-            renderNumbers();renderQuestion();
-            clearInterval(timer);timer=setInterval(tick,1000);
+            if(resumeMode&&saved){answers=saved.answers.slice();current=Math.min(Math.max(Number(saved.current)||0,0),questions.length-1);startedAt=saved.startedAt;const elapsed=Math.floor((Date.now()-new Date(startedAt).getTime())/1000);time=Math.max(0,EXAM_SECONDS-elapsed);if(time<=0){clearProgress();resumeMode=false;alert('Waktu ujian sebelumnya sudah habis. Silakan mulai ujian baru.');return}}
+            else{answers=Array(questions.length).fill(null);current=0;time=EXAM_SECONDS;startedAt=new Date().toISOString();saveProgress()}
+            document.getElementById('start').classList.add('hidden');document.getElementById('exam').classList.remove('hidden');updateTimer();renderNumbers();renderQuestion();clearInterval(timer);timer=setInterval(tick,1000)
           }
-          function tick(){
-            if(startedAt){
-              const elapsed=Math.floor((Date.now()-new Date(startedAt).getTime())/1000);
-              time=Math.max(0,EXAM_SECONDS-elapsed);
-            }else{time=Math.max(0,time-1)}
-            updateTimer();
-            if(time<=0){clearInterval(timer);saveProgress();submitTest(true)}
-            else if(time%5===0){saveProgress()}
-          }
+          function tick(){if(startedAt){const elapsed=Math.floor((Date.now()-new Date(startedAt).getTime())/1000);time=Math.max(0,EXAM_SECONDS-elapsed)}else{time=Math.max(0,time-1)}updateTimer();if(time<=0){clearInterval(timer);saveProgress();submitTest(true)}else if(time%5===0)saveProgress()}
           function renderNumbers(){const box=document.getElementById('numbers');box.innerHTML='';questions.forEach((x,i)=>{const b=document.createElement('button');b.className='num '+(i===current?'active ':'')+(answers[i]!==null?'answered':'');b.textContent=i+1;b.onclick=()=>{current=i;saveProgress();renderNumbers();renderQuestion()};box.appendChild(b)})}
           function renderQuestion(){const q=questions[current];document.getElementById('qno').textContent='Soal '+(current+1)+' dari '+questions.length;document.getElementById('question').textContent=q.q;const box=document.getElementById('options');box.innerHTML='';q.o.forEach((op,i)=>{const l=document.createElement('label');l.className='option';l.innerHTML="<input type='radio' name='opt' value='"+i+"' "+(answers[current]===i?'checked':'')+"> "+String.fromCharCode(65+i)+'. '+op;l.querySelector('input').onchange=e=>{answers[current]=+e.target.value;saveProgress();renderNumbers()};box.appendChild(l)})}
           function prevQ(){if(current>0){current--;saveProgress();renderNumbers();renderQuestion()}}
           function nextQ(){if(current<questions.length-1){current++;saveProgress();renderNumbers();renderQuestion()}}
-          async function submitTest(auto){
-            if(!auto){const u=answers.filter(x=>x===null).length;if(u&&!confirm('Masih ada '+u+' soal belum dijawab. Tetap kirim?'))return}
-            clearInterval(timer);
-            const c=answers.reduce((n,a,i)=>n+(a===questions[i].a?1:0),0),score=c*2;
-            const payload={code:participantCode,name:student,answers,score,correct:c,wrong:questions.length-c,startedAt,finishedAt:new Date().toISOString(),durationSeconds:Math.min(EXAM_SECONDS,Math.max(0,EXAM_SECONDS-time))};
-            try{await fetch(API_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})}catch(e){console.log(e)}
-            clearProgress();
-            document.getElementById('exam').classList.add('hidden');document.getElementById('result').classList.remove('hidden');document.getElementById('resultName').textContent='Nama: '+student;document.getElementById('score').textContent=score+'/100';document.getElementById('resultDetail').textContent='Benar '+c+' dari '+questions.length+' soal • Nilai '+score+'/100';
-          }
+          async function submitTest(auto){if(!auto){const u=answers.filter(x=>x===null).length;if(u&&!confirm('Masih ada '+u+' soal belum dijawab. Tetap kirim?'))return}clearInterval(timer);const c=answers.reduce((n,a,i)=>n+(a===questions[i].a?1:0),0),score=c*2;const payload={code:participantCode,name:student,answers,score,correct:c,wrong:questions.length-c,startedAt,finishedAt:new Date().toISOString(),durationSeconds:Math.min(EXAM_SECONDS,Math.max(0,EXAM_SECONDS-time))};try{await fetch(API_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})}catch(e){console.log(e)}clearProgress();document.getElementById('exam').classList.add('hidden');document.getElementById('result').classList.remove('hidden');document.getElementById('resultName').textContent='Nama: '+student;document.getElementById('score').textContent=score+'/100';document.getElementById('resultDetail').textContent='Benar '+c+' dari '+questions.length+' soal • Nilai '+score+'/100'}
           window.addEventListener('beforeunload',saveProgress);
           document.getElementById('participantCode').addEventListener('keydown',function(e){if(e.key==='Enter')verifyCode()});
           '''
 
-          # Replace from the state declaration through the end of the script body.
-          end_marker = '</script></body></html>'
-          end = s.find(end_marker, pos)
-          if end < 0:
-              raise SystemExit('HTML end marker not found')
-          s = s[:pos] + new_js + s[end:]
+          end_marker='</script></body></html>'
+          end=s.find(end_marker,pos)
+          if end<0:raise SystemExit('HTML end marker not found')
+          s=s[:pos]+new_js+s[end:]
           path.write_text(s,encoding='utf-8')
           PY
 
@@ -173,6 +92,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add siswa.html
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "Add participant codes and resume exam"
           git push
