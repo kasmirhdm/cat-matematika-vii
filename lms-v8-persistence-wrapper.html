@@ -7,7 +7,7 @@
 <style>html,body{margin:0;height:100%;background:#f4f7fb}iframe{width:100%;height:100%;border:0;display:block}</style>
 </head>
 <body>
-<iframe id="lms" src="lms-v8.html?v=20260917-v11"></iframe>
+<iframe id="lms" src="lms-v8.html?v=20260917-persist2"></iframe>
 <script>
 const API="https://script.google.com/macros/s/AKfycbzQmSLNd3ZkaBiUWJMzoTq5_XjPjB4x0dEoGhU0rv58XegZoJ9t4_uj4rwFsLaIHu508w/exec";
 const frame=document.getElementById('lms');
@@ -16,47 +16,85 @@ frame.addEventListener('load',()=>{
   if(!w || !d) return;
   const injected=d.createElement('script');
   injected.textContent=`
+    async function lmsSaveServerProgressFix_(){
+      try{
+        const payload={
+          action:"lms_progress",
+          code:String(code||""),
+          name:String((students[code]&&students[code][0])||""),
+          grade:String(grade||""),
+          done:Array.isArray(progress&&progress.done)?progress.done:[],
+          doneCount:Array.isArray(progress&&progress.done)?progress.done.length:0,
+          total:Number(typeof totalSubtopics==='function'?totalSubtopics():0),
+          percent:Number(typeof getPercent==='function'?getPercent():0)
+        };
+        if(!payload.code) return false;
+        const res=await fetch("${API}",{
+          method:"POST",
+          headers:{"Content-Type":"text/plain;charset=utf-8"},
+          body:JSON.stringify(payload)
+        });
+        if(!res.ok) throw new Error("HTTP "+res.status);
+        return true;
+      }catch(e){
+        console.warn("Progress server gagal disimpan:",e);
+        return false;
+      }
+    }
+
     async function lmsLoadServerProgressFix_(){
       try{
         const url="${API}?action=lms_progress&code="+encodeURIComponent(code)+"&_="+Date.now();
         const res=await fetch(url,{method:"GET",cache:"no-store"});
         if(!res.ok) throw new Error("HTTP "+res.status);
         const data=await res.json();
-        console.log("LMS server progress:",data);
         if(data&&data.ok&&data.found&&Array.isArray(data.done)){
           const localDone=Array.isArray(progress.done)?progress.done:[];
           const serverDone=data.done.map(String);
           const merged=[...new Set([...serverDone,...localDone])];
           progress={done:merged};
           localStorage.setItem(key(),JSON.stringify(progress));
-          if(merged.length!==serverDone.length && typeof syncProgress_==='function') syncProgress_();
-          return true;
+          if(merged.length!==serverDone.length) await lmsSaveServerProgressFix_();
+          return {found:true,count:serverDone.length};
+        }
+        if(data&&data.ok&&data.found===false){
+          const localDone=Array.isArray(progress.done)?progress.done:[];
+          if(localDone.length>0){
+            const saved=await lmsSaveServerProgressFix_();
+            return {found:false,migrated:saved,count:localDone.length};
+          }
         }
       }catch(e){console.warn("Progress server belum dapat dimuat:",e)}
-      return false;
+      return {found:false,migrated:false,count:0};
     }
+
+    const originalSyncProgressFix_=typeof syncProgress_==='function'?syncProgress_:null;
+    syncProgress_=async function(){
+      try{
+        localStorage.setItem(key(),JSON.stringify(progress));
+      }catch(e){}
+      return await lmsSaveServerProgressFix_();
+    };
 
     const originalLoginFix_=login;
     login=async function(){
       let c=document.getElementById("code").value.trim().toUpperCase();
       const err=document.getElementById("err");
-      if(!students[c]){
-        err.style.display="block";
-        err.textContent="Kode peserta tidak ditemukan. Periksa kembali kode peserta.";
-        return;
-      }
+      if(!students[c]){err.style.display="block";err.textContent="Kode peserta tidak ditemukan. Periksa kembali kode peserta.";return}
       err.style.display="none";
-      code=c;
-      grade=students[c][1];
+      code=c; grade=students[c][1];
       try{progress=JSON.parse(localStorage.getItem(key()))||{done:[]}}catch(e){progress={done:[]}}
       if(!progress||!Array.isArray(progress.done)) progress={done:[]};
       document.getElementById("login").style.display="none";
       document.getElementById("app").style.display="block";
       document.getElementById("student").textContent=students[c][0];
-      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • Memuat progress server...";
+      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • Memuat progress...";
       render();
-      const loaded=await lmsLoadServerProgressFix_();
-      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • "+(loaded?"Progress tersimpan di server":"Progress server belum ditemukan");
+      const result=await lmsLoadServerProgressFix_();
+      let status="Progress tersimpan di server";
+      if(!result.found && result.migrated) status="Progress lokal berhasil dikirim ke server";
+      else if(!result.found) status="Belum ada progress di server";
+      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • "+status;
       render();
     };
   `;
