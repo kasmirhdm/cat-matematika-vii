@@ -7,54 +7,60 @@
 <style>html,body{margin:0;height:100%;background:#f4f7fb}iframe{width:100%;height:100%;border:0;display:block}</style>
 </head>
 <body>
-<iframe id="lms" src="lms-v8.html?v=20260917-persist2"></iframe>
+<iframe id="lms" src="lms-v8.html?v=20260917-jsonp3"></iframe>
 <script>
 const API="https://script.google.com/macros/s/AKfycbzQmSLNd3ZkaBiUWJMzoTq5_XjPjB4x0dEoGhU0rv58XegZoJ9t4_uj4rwFsLaIHu508w/exec";
 const frame=document.getElementById('lms');
 frame.addEventListener('load',()=>{
-  const w=frame.contentWindow, d=frame.contentDocument;
-  if(!w || !d) return;
+  const w=frame.contentWindow,d=frame.contentDocument;
+  if(!w||!d)return;
   const injected=d.createElement('script');
   injected.textContent=`
+    function lmsJsonpRequest_(action, params, timeoutMs){
+      return new Promise((resolve,reject)=>{
+        const cb="__lms_cb_"+Date.now()+"_"+Math.random().toString(36).slice(2);
+        const s=document.createElement("script");
+        const q=new URLSearchParams();
+        q.set("action",action); q.set("callback",cb); q.set("_",Date.now());
+        Object.keys(params||{}).forEach(k=>q.set(k,String(params[k])));
+        let timer=setTimeout(()=>{cleanup();reject(new Error("Timeout JSONP"))},timeoutMs||15000);
+        function cleanup(){clearTimeout(timer);try{delete window[cb]}catch(e){};if(s.parentNode)s.parentNode.removeChild(s)}
+        window[cb]=data=>{cleanup();resolve(data)};
+        s.onerror=()=>{cleanup();reject(new Error("JSONP gagal"))};
+        s.src="${API}?"+q.toString();
+        document.head.appendChild(s);
+      });
+    }
+
     async function lmsSaveServerProgressFix_(){
       try{
         const payload={
-          action:"lms_progress",
           code:String(code||""),
           name:String((students[code]&&students[code][0])||""),
           grade:String(grade||""),
-          done:Array.isArray(progress&&progress.done)?progress.done:[],
+          done:JSON.stringify(Array.isArray(progress&&progress.done)?progress.done:[]),
           doneCount:Array.isArray(progress&&progress.done)?progress.done.length:0,
           total:Number(typeof totalSubtopics==='function'?totalSubtopics():0),
           percent:Number(typeof getPercent==='function'?getPercent():0)
         };
-        if(!payload.code) return false;
-        const res=await fetch("${API}",{
-          method:"POST",
-          headers:{"Content-Type":"text/plain;charset=utf-8"},
-          body:JSON.stringify(payload)
-        });
-        if(!res.ok) throw new Error("HTTP "+res.status);
-        return true;
-      }catch(e){
-        console.warn("Progress server gagal disimpan:",e);
-        return false;
-      }
+        if(!payload.code)return false;
+        const data=await lmsJsonpRequest_("lms_progress_save",payload,15000);
+        return !!(data&&data.ok);
+      }catch(e){console.warn("Progress server gagal disimpan:",e);return false}
     }
 
     async function lmsLoadServerProgressFix_(){
       try{
-        const url="${API}?action=lms_progress&code="+encodeURIComponent(code)+"&_="+Date.now();
-        const res=await fetch(url,{method:"GET",cache:"no-store"});
-        if(!res.ok) throw new Error("HTTP "+res.status);
-        const data=await res.json();
+        const data=await lmsJsonpRequest_("lms_progress_jsonp",{
+          code:String(code||""),grade:String(grade||"")
+        },15000);
         if(data&&data.ok&&data.found&&Array.isArray(data.done)){
           const localDone=Array.isArray(progress.done)?progress.done:[];
           const serverDone=data.done.map(String);
           const merged=[...new Set([...serverDone,...localDone])];
           progress={done:merged};
           localStorage.setItem(key(),JSON.stringify(progress));
-          if(merged.length!==serverDone.length) await lmsSaveServerProgressFix_();
+          if(merged.length!==serverDone.length)await lmsSaveServerProgressFix_();
           return {found:true,count:serverDone.length};
         }
         if(data&&data.ok&&data.found===false){
@@ -63,28 +69,25 @@ frame.addEventListener('load',()=>{
             const saved=await lmsSaveServerProgressFix_();
             return {found:false,migrated:saved,count:localDone.length};
           }
+          return {found:false,migrated:false,count:0};
         }
       }catch(e){console.warn("Progress server belum dapat dimuat:",e)}
       return {found:false,migrated:false,count:0};
     }
 
-    const originalSyncProgressFix_=typeof syncProgress_==='function'?syncProgress_:null;
     syncProgress_=async function(){
-      try{
-        localStorage.setItem(key(),JSON.stringify(progress));
-      }catch(e){}
+      try{localStorage.setItem(key(),JSON.stringify(progress))}catch(e){}
       return await lmsSaveServerProgressFix_();
     };
 
-    const originalLoginFix_=login;
     login=async function(){
       let c=document.getElementById("code").value.trim().toUpperCase();
       const err=document.getElementById("err");
       if(!students[c]){err.style.display="block";err.textContent="Kode peserta tidak ditemukan. Periksa kembali kode peserta.";return}
       err.style.display="none";
-      code=c; grade=students[c][1];
+      code=c;grade=students[c][1];
       try{progress=JSON.parse(localStorage.getItem(key()))||{done:[]}}catch(e){progress={done:[]}}
-      if(!progress||!Array.isArray(progress.done)) progress={done:[]};
+      if(!progress||!Array.isArray(progress.done))progress={done:[]};
       document.getElementById("login").style.display="none";
       document.getElementById("app").style.display="block";
       document.getElementById("student").textContent=students[c][0];
@@ -92,8 +95,8 @@ frame.addEventListener('load',()=>{
       render();
       const result=await lmsLoadServerProgressFix_();
       let status="Progress tersimpan di server";
-      if(!result.found && result.migrated) status="Progress lokal berhasil dikirim ke server";
-      else if(!result.found) status="Belum ada progress di server";
+      if(!result.found&&result.migrated)status="Progress lokal berhasil dikirim ke server";
+      else if(!result.found)status="Belum ada progress di server";
       document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • "+status;
       render();
     };
