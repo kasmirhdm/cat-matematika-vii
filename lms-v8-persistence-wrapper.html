@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LMS Matematika SMP - Progress Tersimpan</title>
+<style>html,body{margin:0;height:100%;background:#f4f7fb}iframe{width:100%;height:100%;border:0;display:block}</style>
+</head>
+<body>
+<iframe id="lms" src="lms-v8.html?v=20260917-persist"></iframe>
+<script>
+const API="https://script.google.com/macros/s/AKfycbyMXDFXVHaByjN7EAdIgJErsWp_RQ6Z1_NKYUYgDCLXfRY_NPPk1CHC65cuGUAxU-xw4g/exec";
+const frame=document.getElementById('lms');
+frame.addEventListener('load',()=>{
+  const w=frame.contentWindow, d=frame.contentDocument;
+  if(!w || !d) return;
+  const injected=d.createElement('script');
+  injected.textContent=`
+    async function lmsLoadServerProgressFix_(){
+      try{
+        const url="${API}?action=lms_progress&code="+encodeURIComponent(code)+"&_="+Date.now();
+        const res=await fetch(url,{method:"GET",cache:"no-store"});
+        if(!res.ok) throw new Error("HTTP "+res.status);
+        const data=await res.json();
+        if(data&&data.ok&&data.found&&Array.isArray(data.done)){
+          const localDone=Array.isArray(progress.done)?progress.done:[];
+          const serverDone=data.done.map(String);
+          const merged=[...new Set([...serverDone,...localDone])];
+          progress={done:merged};
+          localStorage.setItem(key(),JSON.stringify(progress));
+          if(merged.length!==serverDone.length) syncProgress_();
+          return true;
+        }
+      }catch(e){console.warn("Progress server belum dapat dimuat:",e)}
+      return false;
+    }
+    const originalLoginFix_=login;
+    login=async function(){
+      let c=document.getElementById("code").value.trim().toUpperCase();
+      const err=document.getElementById("err");
+      if(!students[c]){err.style.display="block";err.textContent="Kode peserta tidak ditemukan. Periksa kembali kode Bapak/Ibu berikan.";return}
+      err.style.display="none";
+      code=c; grade=students[c][1];
+      try{progress=JSON.parse(localStorage.getItem(key()))||{done:[]}}catch(e){progress={done:[]}}
+      if(!progress||!Array.isArray(progress.done)) progress={done:[]};
+      document.getElementById("login").style.display="none";
+      document.getElementById("app").style.display="block";
+      document.getElementById("student").textContent=students[c][0];
+      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • Memuat progress...";
+      render();
+      const loaded=await lmsLoadServerProgressFix_();
+      document.getElementById("classInfo").textContent="Kelas "+grade+" • Kode "+code+" • "+(loaded?"Progress tersimpan di server":"Mode lokal — server belum terbaca");
+      render();
+    };
+  `;
+  d.head.appendChild(injected);
+});
+</script>
+</body>
+</html>
